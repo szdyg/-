@@ -1,7 +1,10 @@
+#pragma once
+
 #include "stdafx.h"
 #include "CPlane.h"
 
-
+UINT CPlane::uBigNumHave = 0;
+UINT CPlane::uBigNum = 2;
 
 //************************************
 // 函数名称:    RandPlane
@@ -13,8 +16,10 @@
 //************************************
 PLANETYPE	RandPlane()
 {
+	int temp;
 	srand(GetTickCount());
-	int temp = rand() % 3;
+	temp = rand() % 3;
+
 	switch (temp)
 	{
 	case 0:
@@ -26,6 +31,15 @@ PLANETYPE	RandPlane()
 		break;
 
 	default:
+		if (CPlane::uBigNumHave > CPlane::uBigNum)
+		{
+			temp = rand() % 2;
+			if (temp == 0)
+			{
+				return SMALL;
+			}
+			return	MIDDLE;
+		}
 		return BIG;
 		break;
 	}
@@ -43,56 +57,70 @@ PLANETYPE	RandPlane()
 //************************************
 CPlane::CPlane()
 {
-	
+
 	this->hIns = GetModuleHandle(NULL);
 	this->dwHit = 0;
 	this->crash = FALSE;
+	this->crashshowed = FALSE;
 	//初始化类型
 	this->type = RandPlane();
 	//根据飞机类型初始化资源
 	switch (this->type)
 	{
 	case SMALL:
-		{	this->Speed = 3;
-			this->hBmp = LoadBitmap(this->hIns, MAKEINTRESOURCE(IDB_SMALLPLANE));
-			BITMAP	bmp;
-			GetObject(this->hBmp, sizeof(bmp), &bmp);
-			this->size.cx = bmp.bmWidth;
-			this->size.cy = bmp.bmHeight / 2;	//2层图片
-			this->dwHP = 1;
-		}
-		break;
+	{
+		this->Speed = 3;
+		this->hBmp = LoadBitmap(this->hIns, MAKEINTRESOURCE(IDB_SMALLPLANE));
+		BITMAP	bmp;
+		GetObject(this->hBmp, sizeof(bmp), &bmp);
+		this->size.cx = bmp.bmWidth;
+		this->size.cy = bmp.bmHeight / 2;	//2层图片
+		this->dwHP = 1;
+	}
+	break;
 
 	case MIDDLE:
-		{
-			this->Speed = 2;
-			this->hBmp = LoadBitmap(this->hIns, MAKEINTRESOURCE(IDB_MIDDLEPALNE));
-			BITMAP	bmp;
-			GetObject(hBmp, sizeof(BITMAP), &bmp);
-			this->size.cx = bmp.bmWidth;
-			this->size.cy = bmp.bmHeight / 3;	//3层图片
-			this->dwHP = 2;
-		}
-		break;
+	{
+		this->Speed = 2;
+		this->hBmp = LoadBitmap(this->hIns, MAKEINTRESOURCE(IDB_MIDDLEPALNE));
+		BITMAP	bmp;
+		GetObject(hBmp, sizeof(BITMAP), &bmp);
+		this->size.cx = bmp.bmWidth;
+		this->size.cy = bmp.bmHeight / 3;	//3层图片
+		this->dwHP = 2;
+	}
+	break;
 
 	case BIG:
-		{	this->Speed = 1;
-			this->hBmp = LoadBitmap(this->hIns, MAKEINTRESOURCE(IDB_BIGPALNE));
-			BITMAP	bmp;
-			GetObject(this->hBmp, sizeof(BITMAP), &bmp);
-			this->size.cx = bmp.bmWidth;
-			this->size.cy = bmp.bmHeight / 4;	//4层图片
-			this->dwHP = 3;
-		}
-		break;
+	{
+		CPlane::BigNumHaveAdd();
+		this->Speed = 1;
+		this->hBmp = LoadBitmap(this->hIns, MAKEINTRESOURCE(IDB_BIGPALNE));
+		BITMAP	bmp;
+		GetObject(this->hBmp, sizeof(BITMAP), &bmp);
+		this->size.cx = bmp.bmWidth;
+		this->size.cy = bmp.bmHeight / 4;	//4层图片
+		this->dwHP = 3;
+	}
+	break;
 	default:
 		break;
 	}
 
-	this->pos.y = 0 - this->size.cy;
+	//随机初始位置
 	srand(GetTickCount());
-
+	this->pos.y = 0 - this->size.cy - (rand() % 20);
 	this->pos.x = rand() % (GAMEWNDWIDTH - this->size.cy);
+}
+
+VOID CPlane::BigNumHaveAdd()
+{
+	CPlane::uBigNumHave -= 1;
+}
+
+VOID CPlane::BigNumHaveSub()
+{
+	CPlane::uBigNumHave += 1;
 }
 
 //************************************
@@ -114,7 +142,7 @@ BOOL CPlane::BeHit(POINT pos)
 	rt.bottom = rt.top + this->size.cy;
 
 	//判断是否被击中
-	if (PtInRect(&rt,pos))
+	if (PtInRect(&rt, pos))
 	{
 		this->dwHit++;
 		PlaySound(MAKEINTRESOURCE(IDR_CRASHWAV), GetModuleHandle(NULL), SND_RESOURCE | SND_ASYNC);
@@ -130,6 +158,11 @@ BOOL CPlane::BeHit(POINT pos)
 
 CPlane::~CPlane()
 {
+	//大飞机数量
+	if (this->type == BIG)
+	{
+		CPlane::BigNumHaveSub();
+	}
 
 }
 
@@ -145,12 +178,17 @@ CPlane::~CPlane()
 //************************************
 VOID CPlane::Draw(HDC hdcMem, HDC hdcTemp)
 {
-	
+
 	SelectObject(hdcTemp, this->hBmp);
 	TransparentBlt(hdcMem, this->pos.x, this->pos.y, this->size.cx, this->size.cy,
-		hdcTemp, 0, this->dwHit*this->size.cy, this->size.cx, this->size.cy,
+		hdcTemp, 0, (this->dwHit*this->size.cy), this->size.cx, this->size.cy,
 		RGB(255, 255, 255));
 
+	if (this->IsCrashed())
+	{
+		this->crashshowed = TRUE;
+	}
+	
 }
 
 //************************************
@@ -176,8 +214,9 @@ BOOL CPlane::IsCrashed()
 //************************************
 BOOL CPlane::Move()
 {
+	
 	this->pos.y += this->Speed;
-	if (this->pos.y+this->size.cy>=GAMEWNDHEIGHT)
+	if (this->pos.y + this->size.cy >= GAMEWNDHEIGHT)
 	{
 		return TRUE;
 	}
@@ -195,5 +234,10 @@ BOOL CPlane::Move()
 DWORD CPlane::Getpoint()
 {
 	return this->dwHP;
+}
+
+BOOL CPlane::IsCrashShowed()
+{
+	return this->crashshowed;
 }
 
